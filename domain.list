@@ -48,3 +48,11 @@ s3.amazonaws.com
 assets.unraid.net
 cdn.unraid.net
 githubusercontent.unraid.net
+
+#docker仓库相关
+registry-1.docker.io
+auth.docker.io
+production.cloudflare.docker.com
+download.docker.com
+linuxserver.io
+www.linuxserver.io
