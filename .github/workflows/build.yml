@@ -1,0 +1,42 @@
+name: Auto Build Hosts
+on:
+  schedule:
+    cron: "0 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  make-hosts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: sudo apt update && sudo apt install -y dnsutils
+
+      - name: Generate hosts file
+        run: |
+          echo "# AutoHosts Start" > hosts
+          echo "# Build Time: $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
+          echo "# Made by tee1975 auto script" >> hosts
+          echo "" >> hosts
+
+          while read dom; do
+            ip=$(dig +short $dom | grep -E '^[0-9.]+$' | head -1)
+            if [ -n "$ip" ]; then
+              printf "%-25s %s\n" "$ip" "$dom" >> hosts
+            fi
+          done < domain.list
+
+          echo "" >> hosts
+          echo "# ========== 自定义私有规则区 ==========" >> hosts
+          echo "192.168.1.100  my-nas" >> hosts
+          echo "127.0.0.1       ad-block.site" >> hosts
+          echo "# AutoHosts End" >> hosts
+
+      - name: Commit & Push
+        run: |
+          git config user.name "tee1975"
+          git config user.email "tee1975@outlook.com"
+          git add hosts
+          git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
+          git push
