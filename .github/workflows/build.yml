@@ -33,9 +33,9 @@ jobs:
 
       - name: 提交并推送更新
         run: |
-          # 这里必须填你自己的GitHub用户名和邮箱
+          # 已使用 GitHub 隐私邮箱，不暴露真实信息
           git config user.name "tee1975"
-          git config user.email "tee1975@vip.qq.com"
+          git config user.email "tee1975@users.noreply.github.com"
           
           git add hosts
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
