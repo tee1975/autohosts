@@ -1,5 +1,6 @@
 # AutoHosts 🚀
 自动解析 GitHub + Unraid 域名，生成加速 hosts
+
 也可以解析其他域名，修改domain.list即可
 ---
 
