@@ -17,6 +17,7 @@ jobs:
       - name: 生成hosts文件
         run: |
           echo "# AutoHosts Start" > hosts
+          export TZ="Asia/Shanghai"
           echo "# Build Time: $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
           echo "# Auto update every 2 hours" >> hosts
           echo "" >> hosts
@@ -25,7 +26,7 @@ jobs:
           while read dom; do
             ip=$(dig +short $dom | grep -E '^[0-9.]+$' | head -1)
             if [ -n "$ip" ]; then
-              printf "%-25s %s\n" "$ip" "$dom" >> hosts
+              printf "%-25s %s %s\n" "$ip" "$dom" "# Auto generated" >> hosts
             fi
           done < domain.list
 
@@ -33,7 +34,6 @@ jobs:
 
       - name: 提交并推送更新
         run: |
-          # 已使用 GitHub 隐私邮箱，不暴露真实信息
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
           
