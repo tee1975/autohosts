@@ -1,25 +1,27 @@
 name: Auto Build Hosts
 on:
   schedule:
-    cron: "0 */2 * * *"
-  workflow_dispatch:
+    - cron: "0 */2 * * *"  # 每2小时自动更新一次
+  workflow_dispatch:  # 支持手动触发更新
 
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
 
-      - name: Install tools
+      - name: 安装解析工具
         run: sudo apt update && sudo apt install -y dnsutils
 
-      - name: Generate hosts file
+      - name: 生成hosts文件
         run: |
           echo "# AutoHosts Start" > hosts
           echo "# Build Time: $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
-          echo "# Made by tee1975 auto script" >> hosts
+          echo "# Auto update every 2 hours" >> hosts
           echo "" >> hosts
 
+          # 自动解析所有域名的IP并写入hosts
           while read dom; do
             ip=$(dig +short $dom | grep -E '^[0-9.]+$' | head -1)
             if [ -n "$ip" ]; then
@@ -27,16 +29,14 @@ jobs:
             fi
           done < domain.list
 
-          echo "" >> hosts
-          echo "# ========== 自定义私有规则区 ==========" >> hosts
-          echo "192.168.1.100  my-nas" >> hosts
-          echo "127.0.0.1       ad-block.site" >> hosts
           echo "# AutoHosts End" >> hosts
 
-      - name: Commit & Push
+      - name: 提交并推送更新
         run: |
+          # 这里必须填你自己的GitHub用户名和邮箱
           git config user.name "tee1975"
-          git config user.email "tee1975@outlook.com"
+          git config user.email "tee1975@vip.qq.com"
+          
           git add hosts
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
           git push
