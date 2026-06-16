@@ -1,7 +1,7 @@
 name: Auto Build Hosts
 on:
   schedule:
-    cron: "0 */2 * * *"
+    - cron: "0 */2 * * *"
   workflow_dispatch:
 
 env:
