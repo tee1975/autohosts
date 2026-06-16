@@ -17,7 +17,7 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v5
 
-      - name: 安装解析工具 & 系统网络优化
+      - name: 安装解析工具 & 网络优化
         run: |
           sudo apt update -qq
           sudo apt install -y -qq dnsutils coreutils moreutils
@@ -25,16 +25,17 @@ jobs:
 
       - name: 生成双栈Hosts（多分类自动识别）
         run: |
-          cat > hosts <<'EOF'
-# AutoHosts 加速文件（GitHub + Unraid + Docker 多场景专用）
-# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')
-# 自动更新周期: 每2小时(UTC)
-# 说明：带 # IPv6 标记为IPv6地址，无标记为IPv4
-# IPv4访问异常可开启设备IPv6网络自动切换线路
-EOF
+          # 逐行写入文件头部，弃用EOF heredoc消除YAML语法冲突
+          echo "# AutoHosts 加速文件（GitHub + Unraid + Docker 多场景专用）" > hosts
+          echo "# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
+          echo "# 自动更新周期: 每2小时(UTC)" >> hosts
+          echo "# 说明：带 # IPv6 标记为IPv6地址，无标记为IPv4" >> hosts
+          echo "# IPv4访问异常可开启设备IPv6网络自动切换线路" >> hosts
 
+          # 清理domain.list重复域名、空行
           sort -u domain.list | grep -v '^\s*$' > domain.tmp && mv domain.tmp domain.list
 
+          # 通用解析函数
           resolve_both_ip() {
             local dom="$1"
             local ipv4=""
@@ -48,23 +49,27 @@ EOF
             echo "${ipv4}||${ipv6}"
           }
 
+          # 分类数组定义
           github_domains=()
           unraid_domains=()
           docker_domains=()
           fail_count=0
 
+          # 遍历所有域名自动分类
           while read -r raw_dom; do
             [[ "$raw_dom" =~ ^\s*# || -z "$raw_dom" ]] && continue
             dom=$(echo "$raw_dom" | xargs)
             result=$(resolve_both_ip "$dom")
             ipv4="${result%%||*}"
             ipv6="${result##*||}"
+
             if [[ -z "$ipv4" && -z "$ipv6" ]]; then
               echo "⚠️  全部解析失败：$dom"
               fail_count=$((fail_count + 1))
               continue
             fi
             echo "✅ 解析成功 | 域名: $dom | IPv4: $ipv4 | IPv6: $ipv6"
+
             if [[ "$dom" =~ github|githubusercontent|gist|github.io|vscode.dev ]]; then
               [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
               [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
@@ -77,20 +82,27 @@ EOF
             fi
           done < domain.list
 
+          # 写入GitHub区块
           echo -e "\n## ===== GitHub 加速域名 =====" >> hosts
           for line in "${github_domains[@]}"; do
             printf "%-30s %s # GitHub\n" $line >> hosts
           done
+
+          # 写入Unraid区块
           echo -e "\n## ===== Unraid 商店/插件源域名 =====" >> hosts
           for line in "${unraid_domains[@]}"; do
             printf "%-30s %s # Unraid\n" $line >> hosts
           done
+
+          # 写入Docker区块
           echo -e "\n## ===== Docker 镜像/源域名 =====" >> hosts
           for line in "${docker_domains[@]}"; do
             printf "%-30s %s # Docker\n" $line >> hosts
           done
+
           echo -e "\n# AutoHosts 文件结束" >> hosts
 
+          # 输出运行统计
           echo -e "\n==================== 本次生成统计 ===================="
           echo "GitHub 解析成功条目：${#github_domains[@]}"
           echo "Unraid 解析成功条目：${#unraid_domains[@]}"
@@ -98,7 +110,7 @@ EOF
           echo "完全解析失败域名数量：$fail_count"
           echo "======================================================"
 
-      - name: 提交推送（无变更自动跳过，冲突自动合并）
+      - name: 提交推送（无变更跳过，冲突自动合并）
         run: |
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
