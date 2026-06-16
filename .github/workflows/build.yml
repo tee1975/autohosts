@@ -8,8 +8,9 @@ jobs:
   make-hosts:
     runs-on: ubuntu-latest
     steps:
+      # 修复：v4 → v5，消除 Node.js20 弃用警告
       - name: 拉取仓库代码
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: 安装解析工具
         run: sudo apt update && sudo apt install -y dnsutils
