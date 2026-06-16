@@ -56,3 +56,21 @@ production.cloudflare.docker.com
 download.docker.com
 linuxserver.io
 www.linuxserver.io
+
+# Unraid 商店/远程补充
+ca.unraid.net
+myunraid.net
+static.unraid.net
+
+# Docker Hub 镜像拉取全套补充
+hub.docker.com
+index.docker.io
+cdn.docker.io
+cloud.docker.com
+dseasb33srnrn.cloudfront.net
+
+# GitHub API/CDN 加速补充
+api.github.com
+assets-cdn.github.com
+camo.githubusercontent.com
+github.map.fastly.net
