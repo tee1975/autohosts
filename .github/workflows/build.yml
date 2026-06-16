@@ -1,43 +1,148 @@
 name: Auto Build Hosts
 on:
   schedule:
-    - cron: "0 */2 * * *"  # 每2小时自动更新一次
-  workflow_dispatch:  # 支持手动触发更新
+    cron: "0 */2 * * *"
+  workflow_dispatch:
+
+env:
+  TZ: Asia/Shanghai
+  DNS_LIST: "114.114.114.114 223.5.5.5 8.8.8.8 9.9.9.9"
+  DIG_TIMEOUT: 3
+  RETRY_TIMES: 2
 
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
     steps:
-      # 修复：v4 → v5，消除 Node.js20 弃用警告
       - name: 拉取仓库代码
         uses: actions/checkout@v5
 
-      - name: 安装解析工具
-        run: sudo apt update && sudo apt install -y dnsutils
-
-      - name: 生成hosts文件
+      - name: 安装解析工具 & 系统网络优化
         run: |
-          echo "# AutoHosts Start" > hosts
-          export TZ="Asia/Shanghai"
-          echo "# Build Time: $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
-          echo "# Auto update every 2 hours" >> hosts
-          echo "" >> hosts
+          sudo apt update -qq
+          sudo apt install -y -qq dnsutils coreutils moreutils
+          echo "options timeout:3 attempts:1" | sudo tee /etc/resolv.conf
 
-          # 自动解析所有域名的IP并写入hosts
-          while read dom; do
-            ip=$(dig +short $dom | grep -E '^[0-9.]+$' | head -1)
-            if [ -n "$ip" ]; then
-              printf "%-25s %s %s\n" "$ip" "$dom" "# Auto generated" >> hosts
+      - name: 生成双栈Hosts（多分类自动识别）
+        run: |
+          # 写入hosts头部固定注释
+          cat > hosts << EOF
+# AutoHosts 加速文件（GitHub + Unraid + Docker 多场景专用）
+# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')
+# 自动更新周期: 每2小时(UTC)
+# 说明：带 # IPv6 标记为IPv6地址，无标记为IPv4
+# IPv4访问异常可开启设备IPv6网络自动切换线路
+EOF
+
+          # 自动清理domain.list重复域名、空行
+          sort -u domain.list | grep -v '^\s*$' > domain.tmp && mv domain.tmp domain.list
+
+          # 通用解析函数（永久无需修改）
+          resolve_both_ip() {
+            local dom="$1"
+            local ipv4=""
+            local ipv6=""
+            for dns in $DNS_LIST; do
+              ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+              ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" | grep -E '^[0-9a-fA-F:]+$' | head -1)
+              [[ -n "$ipv4" || -n "$ipv6" ]] && break
+              sleep 0.5
+            done
+            echo "${ipv4}||${ipv6}"
+          }
+
+          # ====================== 1、新增分类在这里添加数组 ======================
+          github_domains=()
+          unraid_domains=()
+          docker_domains=()
+          # 示例新增分类：proxmox_domains=()
+
+          fail_count=0
+
+          # 遍历全部域名自动匹配分类
+          while read -r raw_dom; do
+            # 跳过注释、空行
+            [[ "$raw_dom" =~ ^\s*# || -z "$raw_dom" ]] && continue
+            dom=$(echo "$raw_dom" | xargs)
+
+            result=$(resolve_both_ip "$dom")
+            ipv4="${result%%||*}"
+            ipv6="${result##*||}"
+
+            # 双栈全部解析失败
+            if [[ -z "$ipv4" && -z "$ipv6" ]]; then
+              echo "⚠️  全部解析失败：$dom"
+              fail_count=$((fail_count + 1))
+              continue
+            fi
+            echo "✅ 解析成功 | 域名: $dom | IPv4: $ipv4 | IPv6: $ipv6"
+
+            # ====================== 2、新增分类匹配规则在这里加elif ======================
+            if [[ "$dom" =~ github|githubusercontent|gist|github.io|vscode.dev ]]; then
+              [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
+              [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
+            elif [[ "$dom" =~ unraid|lime-technology ]]; then
+              [[ -n "$ipv4" ]] && unraid_domains+=("${ipv4} ${dom}")
+              [[ -n "$ipv6" ]] && unraid_domains+=("${ipv6} ${dom} # IPv6")
+            elif [[ "$dom" =~ docker|linuxserver|amazonaws ]]; then
+              [[ -n "$ipv4" ]] && docker_domains+=("${ipv4} ${dom}")
+              [[ -n "$ipv6" ]] && docker_domains+=("${ipv6} ${dom} # IPv6")
+            # 示例新增匹配块
+            # elif [[ "$dom" =~ proxmox|pve ]]; then
+            #   [[ -n "$ipv4" ]] && proxmox_domains+=("${ipv4} ${dom}")
+            #   [[ -n "$ipv6" ]] && proxmox_domains+=("${ipv6} ${dom} # IPv6")
             fi
           done < domain.list
 
-          echo "# AutoHosts End" >> hosts
+          # ====================== 3、新增分类输出区块在这里追加打印代码 ======================
+          # GitHub区块
+          echo -e "\n## ===== GitHub 加速域名 =====" >> hosts
+          for line in "${github_domains[@]}"; do
+            printf "%-30s %s # GitHub\n" $line >> hosts
+          done
 
-      - name: 提交并推送更新
+          # Unraid区块
+          echo -e "\n## ===== Unraid 商店/插件源域名 =====" >> hosts
+          for line in "${unraid_domains[@]}"; do
+            printf "%-30s %s # Unraid\n" $line >> hosts
+          done
+
+          # Docker区块
+          echo -e "\n## ===== Docker 镜像/源域名 =====" >> hosts
+          for line in "${docker_domains[@]}"; do
+            printf "%-30s %s # Docker\n" $line >> hosts
+          done
+
+          # 示例新增输出区块
+          # echo -e "\n## ===== Proxmox PVE 官方源域名 =====" >> hosts
+          # for line in "${proxmox_domains[@]}"; do
+          #   printf "%-30s %s # Proxmox\n" $line >> hosts
+          # done
+
+          echo -e "\n# AutoHosts 文件结束" >> hosts
+
+          # 运行统计输出（新增分类同步加一行统计）
+          echo -e "\n==================== 本次生成统计 ===================="
+          echo "GitHub 解析成功条目：${#github_domains[@]}"
+          echo "Unraid 解析成功条目：${#unraid_domains[@]}"
+          echo "Docker仓库解析条目：${#docker_domains[@]}"
+          # echo "Proxmox解析条目：${#proxmox_domains[@]}"
+          echo "完全解析失败域名数量：$fail_count"
+          echo "======================================================"
+
+      - name: 提交推送（无变更自动跳过，冲突自动合并）
         run: |
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
-          
           git add hosts
+
+          # 无IP变化直接跳过提交
+          if git diff --staged --quiet; then
+            echo "hosts文件无IP变更，跳过提交与推送"
+            exit 0
+          fi
+
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
-          git push
+          # 定时并发推送冲突自动拉取合并
+          git pull --rebase origin main
+          git push origin main
