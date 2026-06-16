@@ -3,27 +3,27 @@ on:
   schedule:
     cron: "0 */2 * * *"
   workflow_dispatch:
+
 env:
   TZ: Asia/Shanghai
   DNS_LIST: "114.114.114.114 223.5.5.5 8.8.8.8 9.9.9.9"
   DIG_TIMEOUT: 3
   RETRY_TIMES: 2
+
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v5
       - name: Install tools
         run: |
           sudo apt update -qq
           sudo apt install -y -qq dnsutils coreutils moreutils
-          echo "options timeout:3 attempts:1" | sudo tee /etc/resolv.conf
-      - name: Generate hosts file
+      - name: Generate hosts
         run: |
-          echo "# AutoHosts GitHub+Unraid+Docker" > hosts
+          echo "# AutoHosts" > hosts
           echo "# Update $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
-          echo "# Update every 2h UTC" >> hosts
           sort -u domain.list | grep -v '^\s*$' > domain.tmp && mv domain.tmp domain.list
           resolve_both_ip(){
             local dom="$1"
@@ -48,7 +48,6 @@ jobs:
             ipv4="${res%%||*}"
             ipv6="${res##*||}"
             if [[ -z "$ipv4" && -z "$ipv6" ]];then
-              echo "Fail resolve: $dom"
               fail_count=$((fail_count+1))
               continue
             fi
@@ -63,20 +62,19 @@ jobs:
               [[ -n "$ipv6" ]] && docker_domains+=("$ipv6 $dom # IPv6")
             fi
           done<domain.list
-          echo -e "\n## GitHub Domains" >> hosts
+          echo -e "\n## GitHub" >> hosts
           for line in "${github_domains[@]}";do
             printf "%-30s #GitHub\n" $line >> hosts
           done
-          echo -e "\n## Unraid Domains" >> hosts
+          echo -e "\n## Unraid" >> hosts
           for line in "${unraid_domains[@]}";do
             printf "%-30s #Unraid\n" $line >> hosts
           done
-          echo -e "\n## Docker Domains" >> hosts
+          echo -e "\n## Docker" >> hosts
           for line in "${docker_domains[@]}";do
             printf "%-30s #Docker\n" $line >> hosts
           done
-          echo "GitHub:${#github_domains[@]} Unraid:${#unraid_domains[@]} Docker:${#docker_domains[@]} Fail:$fail_count"
-      - name: Commit & Push
+      - name: Push
         run: |
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
