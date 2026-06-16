@@ -3,113 +3,85 @@ on:
   schedule:
     cron: "0 */2 * * *"
   workflow_dispatch:
-
 env:
   TZ: Asia/Shanghai
   DNS_LIST: "114.114.114.114 223.5.5.5 8.8.8.8 9.9.9.9"
   DIG_TIMEOUT: 3
   RETRY_TIMES: 2
-
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取仓库代码
+      - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: 安装解析工具 & 网络优化
+      - name: Install tools
         run: |
           sudo apt update -qq
           sudo apt install -y -qq dnsutils coreutils moreutils
           echo "options timeout:3 attempts:1" | sudo tee /etc/resolv.conf
-
-      - name: 生成双栈Hosts
+      - name: Generate hosts file
         run: |
-          echo "# AutoHosts 加速文件（GitHub + Unraid + Docker 多场景专用）" > hosts
-          echo "# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
-          echo "# 自动更新周期: 每2小时(UTC)" >> hosts
-          echo "# 说明：带 # IPv6 标记为IPv6地址，无标记为IPv4" >> hosts
-          echo "# IPv4访问异常可开启设备IPv6网络自动切换线路" >> hosts
-
+          echo "# AutoHosts GitHub+Unraid+Docker" > hosts
+          echo "# Update $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
+          echo "# Update every 2h UTC" >> hosts
           sort -u domain.list | grep -v '^\s*$' > domain.tmp && mv domain.tmp domain.list
-
-          resolve_both_ip() {
+          resolve_both_ip(){
             local dom="$1"
             local ipv4=""
             local ipv6=""
-            for dns in $DNS_LIST; do
-              ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+            for dns in $DNS_LIST;do
+              ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" | grep -E '^[0-9.]+$' | head -1)
               ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" | grep -E '^[0-9a-fA-F:]+$' | head -1)
               [[ -n "$ipv4" || -n "$ipv6" ]] && break
               sleep 0.5
             done
             echo "${ipv4}||${ipv6}"
           }
-
           github_domains=()
           unraid_domains=()
           docker_domains=()
           fail_count=0
-
-          while read -r raw_dom; do
+          while read -r raw_dom;do
             [[ "$raw_dom" =~ ^\s*# || -z "$raw_dom" ]] && continue
             dom=$(echo "$raw_dom" | xargs)
-            result=$(resolve_both_ip "$dom")
-            ipv4="${result%%||*}"
-            ipv6="${result##*||}"
-
-            if [[ -z "$ipv4" && -z "$ipv6" ]]; then
-              echo "⚠️  全部解析失败：$dom"
-              fail_count=$((fail_count + 1))
+            res=$(resolve_both_ip "$dom")
+            ipv4="${res%%||*}"
+            ipv6="${res##*||}"
+            if [[ -z "$ipv4" && -z "$ipv6" ]];then
+              echo "Fail resolve: $dom"
+              fail_count=$((fail_count+1))
               continue
             fi
-            echo "✅ 解析成功 | 域名: $dom | IPv4: $ipv4 | IPv6: $ipv6"
-
-            if [[ "$dom" =~ github|githubusercontent|gist|github.io|vscode.dev ]]; then
-              [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
-            elif [[ "$dom" =~ unraid|lime-technology ]]; then
-              [[ -n "$ipv4" ]] && unraid_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && unraid_domains+=("${ipv6} ${dom} # IPv6")
-            elif [[ "$dom" =~ docker|linuxserver|amazonaws ]]; then
-              [[ -n "$ipv4" ]] && docker_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && docker_domains+=("${ipv6} ${dom} # IPv6")
+            if [[ "$dom" =~ github|githubusercontent|shturl.cc/ ]];then
+              [[ -n "$ipv4" ]] && github_domains+=("$ipv4 $dom")
+              [[ -n "$ipv6" ]] && github_domains+=("$ipv6 $dom # IPv6")
+            elif [[ "$dom" =~ unraid ]];then
+              [[ -n "$ipv4" ]] && unraid_domains+=("$ipv4 $dom")
+              [[ -n "$ipv6" ]] && unraid_domains+=("$ipv6 $dom # IPv6")
+            elif [[ "$dom" =~ docker|linuxserver|amazonaws ]];then
+              [[ -n "$ipv4" ]] && docker_domains+=("$ipv4 $dom")
+              [[ -n "$ipv6" ]] && docker_domains+=("$ipv6 $dom # IPv6")
             fi
-          done < domain.list
-
-          echo -e "\n## ===== GitHub 加速域名 =====" >> hosts
-          for line in "${github_domains[@]}"; do
-            printf "%-30s %s # GitHub\n" $line >> hosts
+          done<domain.list
+          echo -e "\n## GitHub Domains" >> hosts
+          for line in "${github_domains[@]}";do
+            printf "%-30s #GitHub\n" $line >> hosts
           done
-
-          echo -e "\n## ===== Unraid 商店/插件源域名 =====" >> hosts
-          for line in "${unraid_domains[@]}"; do
-            printf "%-30s %s # Unraid\n" $line >> hosts
+          echo -e "\n## Unraid Domains" >> hosts
+          for line in "${unraid_domains[@]}";do
+            printf "%-30s #Unraid\n" $line >> hosts
           done
-
-          echo -e "\n## ===== Docker 镜像/源域名 =====" >> hosts
-          for line in "${docker_domains[@]}"; do
-            printf "%-30s %s # Docker\n" $line >> hosts
+          echo -e "\n## Docker Domains" >> hosts
+          for line in "${docker_domains[@]}";do
+            printf "%-30s #Docker\n" $line >> hosts
           done
-
-          echo -e "\n# AutoHosts 文件结束" >> hosts
-
-          echo -e "\n==================== 本次生成统计 ===================="
-          echo "GitHub 解析成功条目：${#github_domains[@]}"
-          echo "Unraid 解析成功条目：${#unraid_domains[@]}"
-          echo "Docker仓库解析条目：${#docker_domains[@]}"
-          echo "完全解析失败域名数量：$fail_count"
-          echo "======================================================"
-
-      - name: 提交推送
+          echo "GitHub:${#github_domains[@]} Unraid:${#unraid_domains[@]} Docker:${#docker_domains[@]} Fail:$fail_count"
+      - name: Commit & Push
         run: |
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
           git add hosts
-          if git diff --staged --quiet; then
-            echo "hosts文件无IP变更，跳过提交与推送"
-            exit 0
-          fi
+          if git diff --staged --quiet;then exit 0;fi
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
           git pull --rebase origin main
           git push origin main
