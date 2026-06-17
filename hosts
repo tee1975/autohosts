@@ -1,188 +1,73 @@
 # AutoHosts GitHub+Unraid+Docker 加速文件
-# 更新时间(北京时间): 2026-06-17 11:43:04
+# 更新时间(北京时间): 2026-06-17 12:05:02
 # 定时周期: 每4小时UTC自动更新
 # IPv6条目标记 # IPv6
 
 ## ===== GitHub 加速域名 =====
-140.82.114.25                  #GitHub
-alive.github.com               #GitHub
-140.82.113.5                   #GitHub
-api.github.com                 #GitHub
-185.199.109.133                #GitHub
-avatars.githubusercontent.com  #GitHub
-2606:50c0:8000::154            #GitHub
-avatars.githubusercontent.com  #GitHub
-#                              #GitHub
-IPv6                           #GitHub
-185.199.111.133                #GitHub
-avatars0.githubusercontent.com #GitHub
-185.199.108.133                #GitHub
-avatars1.githubusercontent.com #GitHub
-185.199.108.133                #GitHub
-avatars2.githubusercontent.com #GitHub
-185.199.110.133                #GitHub
-avatars3.githubusercontent.com #GitHub
-185.199.109.133                #GitHub
-avatars4.githubusercontent.com #GitHub
-185.199.109.133                #GitHub
-avatars5.githubusercontent.com #GitHub
-185.199.109.133                #GitHub
-camo.githubusercontent.com     #GitHub
-140.82.114.22                  #GitHub
-central.github.com             #GitHub
-185.199.111.133                #GitHub
-cloud.githubusercontent.com    #GitHub
-140.82.114.9                   #GitHub
-codeload.github.com            #GitHub
-140.82.114.22                  #GitHub
-collector.github.com           #GitHub
-185.199.108.133                #GitHub
-desktop.githubusercontent.com  #GitHub
-140.82.114.22                  #GitHub
-education.github.com           #GitHub
-185.199.110.133                #GitHub
-favicons.githubusercontent.com #GitHub
-140.82.114.3                   #GitHub
-gist.github.com                #GitHub
-192.0.66.2                     #GitHub
-github.blog                    #GitHub
-140.82.114.3                   #GitHub
-github.com                     #GitHub
-140.82.112.18                  #GitHub
-github.community               #GitHub
-185.199.109.215                #GitHub
-github.githubassets.com        #GitHub
-2606:50c0:8000::215            #GitHub
-github.githubassets.com        #GitHub
-#                              #GitHub
-IPv6                           #GitHub
-146.75.121.194                 #GitHub
-github.global.ssl.fastly.net   #GitHub
-185.199.108.153                #GitHub
-github.io                      #GitHub
-185.199.111.133                #GitHub
-github.map.fastly.net          #GitHub
-185.199.111.153                #GitHub
-githubstatus.com               #GitHub
-140.82.114.25                  #GitHub
-live.github.com                #GitHub
-185.199.110.133                #GitHub
-media.githubusercontent.com    #GitHub
-2606:50c0:8002::154            #GitHub
-media.githubusercontent.com    #GitHub
-#                              #GitHub
-IPv6                           #GitHub
-185.199.108.133                #GitHub
-objects.githubusercontent.com  #GitHub
-13.107.42.16                   #GitHub
-pipelines.actions.githubusercontent.com #GitHub
-2620:1ec:21::16                #GitHub
-pipelines.actions.githubusercontent.com #GitHub
-#                              #GitHub
-IPv6                           #GitHub
-185.199.109.133                #GitHub
-private-user-images.githubusercontent.com #GitHub
-185.199.109.133                #GitHub
-raw.githubusercontent.com      #GitHub
-2606:50c0:8001::154            #GitHub
-raw.githubusercontent.com      #GitHub
-#                              #GitHub
-IPv6                           #GitHub
-185.199.110.133                #GitHub
-user-images.githubusercontent.com #GitHub
-2606:50c0:8003::154            #GitHub
-user-images.githubusercontent.com #GitHub
-#                              #GitHub
-IPv6                           #GitHub
+140.82.113.26 alive.github.com #GitHub
+140.82.114.6 api.github.com    #GitHub
+185.199.111.133 avatars.githubusercontent.com #GitHub
+2606:50c0:8003::154 avatars.githubusercontent.com # IPv6 #GitHub
+185.199.108.133 avatars0.githubusercontent.com #GitHub
+185.199.108.133 avatars1.githubusercontent.com #GitHub
+185.199.110.133 avatars2.githubusercontent.com #GitHub
+185.199.109.133 avatars3.githubusercontent.com #GitHub
+185.199.109.133 avatars4.githubusercontent.com #GitHub
+185.199.111.133 avatars5.githubusercontent.com #GitHub
+185.199.111.133 camo.githubusercontent.com #GitHub
+140.82.112.22 central.github.com #GitHub
+185.199.110.133 cloud.githubusercontent.com #GitHub
+140.82.112.9 codeload.github.com #GitHub
+140.82.112.22 collector.github.com #GitHub
+185.199.108.133 desktop.githubusercontent.com #GitHub
+140.82.113.22 education.github.com #GitHub
+185.199.108.133 favicons.githubusercontent.com #GitHub
+140.82.114.4 gist.github.com   #GitHub
+192.0.66.2 github.blog         #GitHub
+140.82.113.3 github.com        #GitHub
+140.82.114.18 github.community #GitHub
+185.199.111.215 github.githubassets.com #GitHub
+2606:50c0:8001::215 github.githubassets.com # IPv6 #GitHub
+146.75.121.194 github.global.ssl.fastly.net #GitHub
+185.199.109.153 github.io      #GitHub
+185.199.110.133 github.map.fastly.net #GitHub
+185.199.110.153 githubstatus.com #GitHub
+140.82.112.26 live.github.com  #GitHub
+185.199.111.133 media.githubusercontent.com #GitHub
+2606:50c0:8001::154 media.githubusercontent.com # IPv6 #GitHub
+185.199.109.133 objects.githubusercontent.com #GitHub
+13.107.42.16 pipelines.actions.githubusercontent.com #GitHub
+2620:1ec:21::16 pipelines.actions.githubusercontent.com # IPv6 #GitHub
+185.199.110.133 private-user-images.githubusercontent.com #GitHub
+185.199.109.133 raw.githubusercontent.com #GitHub
+2606:50c0:8000::154 raw.githubusercontent.com # IPv6 #GitHub
+185.199.110.133 user-images.githubusercontent.com #GitHub
+2606:50c0:8000::154 user-images.githubusercontent.com # IPv6 #GitHub
 
 ## ===== Unraid 商店/插件域名 =====
-104.26.3.117                   #Unraid
-ca.unraid.net                  #Unraid
-2606:4700:20::681a:375         #Unraid
-ca.unraid.net                  #Unraid
-#                              #Unraid
-IPv6                           #Unraid
-104.26.2.117                   #Unraid
-forums.unraid.net              #Unraid
-2606:4700:20::ac43:45b0        #Unraid
-forums.unraid.net              #Unraid
-#                              #Unraid
-IPv6                           #Unraid
-172.67.69.176                  #Unraid
-unraid.net                     #Unraid
-2606:4700:20::ac43:45b0        #Unraid
-unraid.net                     #Unraid
-#                              #Unraid
-IPv6                           #Unraid
-104.26.3.117                   #Unraid
-wiki.unraid.net                #Unraid
-2606:4700:20::681a:275         #Unraid
-wiki.unraid.net                #Unraid
-#                              #Unraid
-IPv6                           #Unraid
-172.67.69.176                  #Unraid
-www.unraid.net                 #Unraid
-2606:4700:20::681a:375         #Unraid
-www.unraid.net                 #Unraid
-#                              #Unraid
-IPv6                           #Unraid
+104.26.3.117 ca.unraid.net     #Unraid
+2606:4700:20::681a:275 ca.unraid.net # IPv6 #Unraid
+104.26.2.117 forums.unraid.net #Unraid
+2606:4700:20::681a:375 forums.unraid.net # IPv6 #Unraid
+104.26.2.117 unraid.net        #Unraid
+2606:4700:20::681a:375 unraid.net # IPv6 #Unraid
+2606:4700:20::681a:375 wiki.unraid.net # IPv6 #Unraid
+172.67.69.176 www.unraid.net   #Unraid
+2606:4700:20::ac43:45b0 www.unraid.net # IPv6 #Unraid
 
 ## ===== Docker & LinuxServer 域名 =====
-104.18.43.178                  #Docker
-auth.docker.io                 #Docker
-2a06:98c1:3105::ac40:904e      #Docker
-auth.docker.io                 #Docker
-#                              #Docker
-IPv6                           #Docker
-100.50.161.123                 #Docker
-cloud.docker.com               #Docker
-2600:1f18:2148:bc01:6e4b:44e0:e8d9:245c #Docker
-cloud.docker.com               #Docker
-#                              #Docker
-IPv6                           #Docker
-18.160.143.28                  #Docker
-download.docker.com            #Docker
-2600:9000:24ce:0:3:db06:4200:93a1 #Docker
-download.docker.com            #Docker
-#                              #Docker
-IPv6                           #Docker
-104.18.43.187                  #Docker
-hub.docker.com                 #Docker
-2606:4700:440c::6812:2bbb      #Docker
-hub.docker.com                 #Docker
-#                              #Docker
-IPv6                           #Docker
-54.166.120.201                 #Docker
-index.docker.io                #Docker
-2600:1f18:2148:bc01:dc90:cff2:1675:f2ad #Docker
-index.docker.io                #Docker
-#                              #Docker
-IPv6                           #Docker
-178.62.84.203                  #Docker
-linuxserver.io                 #Docker
-2a03:b0c0:1:d0::11f8:d001      #Docker
-linuxserver.io                 #Docker
-#                              #Docker
-IPv6                           #Docker
-104.16.101.215                 #Docker
-production.cloudflare.docker.com #Docker
-2606:4700::6810:62d7           #Docker
-production.cloudflare.docker.com #Docker
-#                              #Docker
-IPv6                           #Docker
-18.208.28.209                  #Docker
-registry-1.docker.io           #Docker
-2600:1f18:2148:bc01:d1d6:a87:e7fa:b2d7 #Docker
-registry-1.docker.io           #Docker
-#                              #Docker
-IPv6                           #Docker
-16.15.207.71                   #Docker
-s3.amazonaws.com               #Docker
-178.62.84.203                  #Docker
-www.linuxserver.io             #Docker
-2a03:b0c0:1:d0::11f8:d001      #Docker
-www.linuxserver.io             #Docker
-#                              #Docker
-IPv6                           #Docker
+172.64.144.78 auth.docker.io   #Docker
+2a06:98c1:3106::6812:2bb2 auth.docker.io # IPv6 #Docker
+100.50.161.123 cloud.docker.com #Docker
+2600:9000:2105:3a00:3:db06:4200:93a1 download.docker.com # IPv6 #Docker
+2606:4700:440c::6812:2bbb hub.docker.com # IPv6 #Docker
+98.87.117.199 index.docker.io  #Docker
+178.62.84.203 linuxserver.io   #Docker
+2a03:b0c0:1:d0::11f8:d001 linuxserver.io # IPv6 #Docker
+104.16.101.215 production.cloudflare.docker.com #Docker
+44.212.193.2 registry-1.docker.io #Docker
+2600:1f18:2148:bc01:966f:9b09:a8be:4ba5 registry-1.docker.io # IPv6 #Docker
+54.231.225.16 s3.amazonaws.com #Docker
+2a03:b0c0:1:d0::11f8:d001 www.linuxserver.io # IPv6 #Docker
 
 # 文件结束
