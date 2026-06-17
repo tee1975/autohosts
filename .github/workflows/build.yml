@@ -18,33 +18,40 @@ jobs:
       - name: 拉取仓库代码
         uses: actions/checkout@v5
 
-      - name: 安装解析工具 & 系统DNS优化
+      - name: 安装依赖 + 系统资源限制优化
         run: |
           sudo apt update -qq
           sudo apt install -y -qq dnsutils coreutils moreutils
+          # 减少进程、core dump，降低后置清理压力
+          ulimit -u 200
+          ulimit -c 0
           echo "options timeout:1 attempts:1" | sudo tee /etc/resolv.conf
 
-      - name: 批量解析生成Hosts
+      - name: 批量解析生成Hosts（无孤儿进程优化版）
         run: |
+          set -euo pipefail
           # 初始化hosts头部
           echo "# AutoHosts GitHub+Unraid+Docker 加速文件" > hosts
           echo "# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
           echo "# 定时周期: 每4小时UTC自动更新" >> hosts
           echo "# IPv6条目标记 # IPv6" >> hosts
 
-          # 域名去重清理
-          sort -u domain.list | grep -v '^\s*$' > domain.tmp && mv domain.tmp domain.list
+          # 域名去重，过滤空行注释
+          sort -u domain.list | grep -v '^\s*$' | grep -v '^\s*#' > domain.tmp && mv domain.tmp domain.list
 
-          # 双层超时解析函数，极致提速
+          # 重构解析函数：无外层timeout，单域名跑完立刻销毁dig进程
           resolve_both_ip() {
             local dom="$1"
             local ipv4=""
             local ipv6=""
             for dns in $DNS_LIST; do
-              ipv4=$(timeout 1.5 dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-              ipv6=$(timeout 1.5 dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" | grep -E '^[0-9a-fA-F:]+$' | head -1)
+              # 仅使用dig原生超时，不创建隔离子进程
+              ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+              ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1)
+              # 精准杀死当前域名对应的dig，无残留
+              pkill -f "dig +short $dom" || true
               [[ -n "$ipv4" || -n "$ipv6" ]] && break
-              sleep 0.1
+              sleep 0.05
             done
             echo "${ipv4}||${ipv6}"
           }
@@ -55,9 +62,8 @@ jobs:
           docker_domains=()
           fail_count=0
 
-          # 遍历全部域名自动分类
+          # 逐行遍历域名自动归类
           while read -r raw_dom; do
-            [[ "$raw_dom" =~ ^\s*# || -z "$raw_dom" ]] && continue
             dom=$(echo "$raw_dom" | xargs)
             result=$(resolve_both_ip "$dom")
             ipv4="${result%%||*}"
@@ -70,7 +76,7 @@ jobs:
             fi
             echo "✅解析成功 | $dom | IPv4:$ipv4 | IPv6:$ipv6"
 
-            # 自动归类
+            # 自动区分三大类域名
             if [[ "$dom" =~ github|githubusercontent ]]; then
               [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
               [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
@@ -86,21 +92,21 @@ jobs:
           # 分区块写入hosts文件
           echo -e "\n## ===== GitHub 加速域名 =====" >> hosts
           for line in "${github_domains[@]}"; do
-            printf "%-30s #GitHub\n" $line >> hosts
+            printf "%-30s #GitHub\n" "$line" >> hosts
           done
 
           echo -e "\n## ===== Unraid 商店/插件域名 =====" >> hosts
           for line in "${unraid_domains[@]}"; do
-            printf "%-30s #Unraid\n" $line >> hosts
+            printf "%-30s #Unraid\n" "$line" >> hosts
           done
 
           echo -e "\n## ===== Docker & LinuxServer 域名 =====" >> hosts
           for line in "${docker_domains[@]}"; do
-            printf "%-30s #Docker\n" $line >> hosts
+            printf "%-30s #Docker\n" "$line" >> hosts
           done
           echo -e "\n# 文件结束" >> hosts
 
-          # 输出本次运行统计
+          # 输出运行统计
           echo -e "\n==================== 运行统计 ===================="
           echo "GitHub成功条目：${#github_domains[@]}"
           echo "Unraid成功条目：${#unraid_domains[@]}"
@@ -108,16 +114,20 @@ jobs:
           echo "本次解析失败域名：$fail_count"
           echo "=================================================="
 
-          # 主动杀掉所有dig残留进程，避免后置清理卡死
+          # 全局兜底清理：杀死所有dig进程 + 同步磁盘释放IO
           pkill -f "dig +short" || true
+          pkill -f dig || true
           sync
+          sleep 0.1
+          rm -f domain.tmp
 
-      - name: 提交&推送（修复github域名解析失败）
+      - name: 提交&推送（修复github.com DNS解析失败）
         run: |
+          set -euo pipefail
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
           git add hosts
-          # 无变更直接退出
+          # 无变更直接退出，不生成空提交
           if git diff --staged --quiet; then
             echo "hosts无更新，跳过提交推送"
             exit 0
@@ -125,12 +135,14 @@ jobs:
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
           rm -f domain.tmp
 
-          # 强制写入github稳定IP，绕开DNS污染
+          # 硬绑定GitHub静态IP，规避Runner DNS污染
           echo "140.82.116.4 github.com" | sudo tee -a /etc/hosts
           echo "185.199.108.133 raw.githubusercontent.com" | sudo tee -a /etc/hosts
 
           git pull --rebase --autostash origin main
           git push origin main
-          # 强制同步磁盘，释放IO资源
+
+          # 推送完成二次清理进程、同步磁盘
           sync
-          sleep 0.5
+          sleep 0.1
+          pkill -f dig || true
