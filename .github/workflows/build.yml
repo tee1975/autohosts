@@ -1,4 +1,5 @@
 name: Auto Build Hosts
+
 on:
   schedule:
     - cron: "0 */4 * * *"
@@ -8,164 +9,134 @@ env:
   TZ: Asia/Shanghai
   DNS_LIST: "223.5.5.5 114.114.114.114"
   DIG_TIMEOUT: 2
-  RETRY_TIMES: 1
+  RETRY_TIMES: 2                     # 现在真正启用重试
 
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+
     steps:
-      - name: 拉取仓库代码（禁用自动clean，避免内置Post大扫描）
+      - name: 拉取仓库代码
         uses: actions/checkout@v5
         with:
-          clean: false # 官方合法参数，关闭自动清理逻辑
+          clean: false               # 避免内置 post-checkout 全量扫描
 
-      - name: 安装依赖 + 系统资源限制优化
+      - name: 安装依赖
         run: |
           sudo apt update -qq
-          sudo apt install -y -qq dnsutils coreutils moreutils
-          ulimit -u 150
-          ulimit -c 0
-          echo "options timeout:2 attempts:1" | sudo tee /etc/resolv.conf
-          sync
-          sleep 0.2
+          sudo apt install -y -qq dnsutils moreutils
+          # 不再修改系统 DNS 或进程限制，避免干扰 Runner
 
-      - name: 批量并行解析生成Hosts（8线程+信号兜底，控制进程总量）
+      - name: 并行解析并生成 hosts
         run: |
           set -euo pipefail
 
-          # 全局退出信号捕获，仅清理解析相关子进程，不误伤自身bash
-          full_cleanup() {
-            echo "执行全局兜底清理，销毁dig与解析子进程、临时文件"
-            pkill -9 dig || true
-            pkill -f "bash -c resolve_single" || true
-            rm -f resolve_result.tmp domain.tmp
-            sync
-          }
-          trap full_cleanup EXIT SIGINT SIGTERM
+          # 清理临时文件（无需杀进程）
+          cleanup() { rm -f resolve_result.tmp domain.clean; }
+          trap cleanup EXIT
 
-          # 初始化hosts头部注释
-          echo "# AutoHosts GitHub+Unraid+Docker+TMDB/TVDB媒体刮削加速文件" > hosts
-          echo "# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
-          echo "# 定时周期: 每4小时自动更新" >> hosts
-          echo "# IPv6条目末尾标记 # IPv6" >> hosts
+          # 写入头部
+          cat > hosts <<EOF
+          # AutoHosts GitHub+Unraid+Docker+TMDB/TVDB 加速
+          # 更新时间 (北京时间): $(date +'%Y-%m-%d %H:%M:%S')
+          # 定时周期: 每4小时自动更新
+          # IPv6 条目末尾标记 # IPv6
+          EOF
 
-          # 清洗域名列表：去重、过滤空行与注释
-          sort -u domain.list | grep -v '^\s*$' | grep -v '^\s*#' > domain.tmp && mv domain.tmp domain.list
+          # 清洗域名列表（去重、过滤空行/注释），但不覆盖原文件
+          grep -v '^\s*$' domain.list | grep -v '^\s*#' | sort -u > domain.clean
 
-          # 单域名解析函数
+          # 单域名解析函数（带重试）
           resolve_single() {
             local dom="$1"
-            local ipv4=""
-            local ipv6=""
+            local ipv4="" ipv6=""
             for dns in $DNS_LIST; do
-              ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
-              ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1)
-              [[ -n "$ipv4" || -n "$ipv6" ]] && break
+              for ((i=1; i<=RETRY_TIMES; i++)); do
+                ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
+                ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1)
+                [[ -n "$ipv4" || -n "$ipv6" ]] && break 2
+              done
             done
             echo "$dom||$ipv4||$ipv6"
           }
           export -f resolve_single
+          export DNS_LIST DIG_TIMEOUT RETRY_TIMES
 
-          # 限制8并发线程，控制同时存活子进程数量
-          cat domain.list | xargs -P8 -I{} bash -c 'resolve_single "{}"' > resolve_result.tmp
-          sync
-          sleep 0.3
+          # 8 线程并行解析
+          < domain.clean xargs -P8 -I{} bash -c 'resolve_single "{}"' > resolve_result.tmp
 
-          # 初始化分类数组
-          github_domains=()
-          unraid_domains=()
-          media_docker_domains=()
+          # 分类存储（使用关联数组）
+          declare -A groups=([github]="" [unraid]="" [media]="")
           fail_count=0
 
-          # 读取解析结果自动分类
           while IFS='||' read -r dom ipv4 ipv6; do
             if [[ -z "$ipv4" && -z "$ipv6" ]]; then
               echo "⚠️ 解析失败：$dom"
               fail_count=$((fail_count + 1))
               continue
             fi
-            echo "✅解析成功 | $dom | IPv4:$ipv4 | IPv6:$ipv6"
+            echo "✅ 解析成功 | $dom | IPv4:$ipv4 | IPv6:$ipv6"
 
-            if [[ "$dom" =~ github|githubusercontent ]]; then
-              [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
-            elif [[ "$dom" =~ unraid ]]; then
-              [[ -n "$ipv4" ]] && unraid_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && unraid_domains+=("${ipv6} ${dom} # IPv6")
-            else
-              [[ -n "$ipv4" ]] && media_docker_domains+=("${ipv4} ${dom}")
-              [[ -n "$ipv6" ]] && media_docker_domains+=("${ipv6} ${dom} # IPv6")
-            fi
+            # 组装行（IPv4 和 IPv6 分别存储）
+            [[ -n "$ipv4" ]] && line4="$ipv4 $dom"
+            [[ -n "$ipv6" ]] && line6="$ipv6 $dom # IPv6"
+
+            case "$dom" in
+              *github*|*githubusercontent*)
+                [[ -n "$ipv4" ]] && groups[github]+="${line4}"$'\n'
+                [[ -n "$ipv6" ]] && groups[github]+="${line6}"$'\n'
+                ;;
+              *unraid*)
+                [[ -n "$ipv4" ]] && groups[unraid]+="${line4}"$'\n'
+                [[ -n "$ipv6" ]] && groups[unraid]+="${line6}"$'\n'
+                ;;
+              *)
+                [[ -n "$ipv4" ]] && groups[media]+="${line4}"$'\n'
+                [[ -n "$ipv6" ]] && groups[media]+="${line6}"$'\n'
+                ;;
+            esac
           done < resolve_result.tmp
 
-          # 分区块写入hosts文件
-          echo -e "\n## ===== GitHub 加速域名 =====" >> hosts
-          for line in "${github_domains[@]}"; do
-            printf "%-35s #GitHub\n" "$line" >> hosts
+          # 分区块写入 hosts
+          for tag in "github#GitHub" "unraid#Unraid" "media#Docker/MediaScraper"; do
+            key="${tag%#*}" ; label="${tag#*#}"
+            echo -e "\n## ===== $label 加速域名 =====" >> hosts
+            while IFS= read -r line; do
+              [[ -n "$line" ]] && printf "%-40s %s\n" "$line" "#$label" >> hosts
+            done <<< "${groups[$key]}"
           done
 
-          echo -e "\n## ===== Unraid 商店/激活刚需域名 =====" >> hosts
-          for line in "${unraid_domains[@]}"; do
-            printf "%-35s #Unraid\n" "$line" >> hosts
-          done
-
-          echo -e "\n## ===== Docker + TMDB/TVDB/动漫刮削域名 =====" >> hosts
-          for line in "${media_docker_domains[@]}"; do
-            printf "%-35s #Docker/MediaScraper\n" "$line" >> hosts
-          done
           echo -e "\n# 文件结束" >> hosts
 
-          # 输出运行统计
+          # 输出统计
           echo -e "\n==================== 运行统计 ===================="
-          echo "GitHub成功条目：${#github_domains[@]}"
-          echo "Unraid成功条目：${#unraid_domains[@]}"
-          echo "Docker/媒体刮削成功条目：${#media_docker_domains[@]}"
-          echo "本次解析失败域名：$fail_count"
+          echo "GitHub 条目：$(echo "${groups[github]}" | wc -l)"
+          echo "Unraid 条目：$(echo "${groups[unraid]}" | wc -l)"
+          echo "Docker/媒体 条目：$(echo "${groups[media]}" | wc -l)"
+          echo "解析失败域名：$fail_count"
           echo "=================================================="
 
-          # 解析完成提前强制回收全部解析子进程
-          pkill -9 dig || true
-          pkill -9 -f "bash -c resolve_single" || true
-          sync
-          sleep 0.5
-
-      - name: 提交&推送（修复github.com DNS解析污染）
+      - name: 提交并推送（使用 GITHUB_TOKEN 规避 DNS 污染）
         run: |
-          set -euo pipefail
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
           git add hosts
-          # 无变更直接退出，不生成空提交
           if git diff --staged --quiet; then
-            echo "hosts文件无更新，跳过提交推送流程"
+            echo "hosts 无变化，跳过提交"
             exit 0
           fi
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
 
-          # 硬绑定GitHub静态IP，规避Runner DNS污染
-          echo "140.82.116.4 github.com" | sudo tee -a /etc/hosts
-          echo "185.199.108.133 raw.githubusercontent.com" | sudo tee -a /etc/hosts
-
+          # 关键改进：使用 GitHub Token 认证，不再依赖 DNS 解析 GitHub IP
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git pull --rebase --autostash origin main
           git push origin main
 
-          # 推送后二次清理解析残留进程
-          echo "推送完成，清理后台残留进程"
-          pkill -9 dig || true
-          pkill -9 -f "bash -c resolve_single" || true
-          sync
-          sleep 0.5
-
-      # 手动轻量化清理git，替代checkout内置Post逻辑
-      - name: 手动清理git子模块与多余配置
+      - name: 手动轻量清理（替代内置 post-checkout 扫描）
         run: |
-          echo "手动轻量化清理git，避免内置后置全量扫描"
           git submodule deinit --all 2>/dev/null || true
           rm -rf .git/modules .git/submodule-cache 2>/dev/null || true
           git config --global --remove-section submodule 2>/dev/null || true
           git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
-          # 手动重置工作目录，替代clean自动扫描
           git clean -fd --exclude=hosts --exclude=domain.list 2>/dev/null || true
-          sync
-          sleep 0.2
