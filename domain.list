@@ -1,4 +1,4 @@
-# GitHub 加速域名
+# ====================== GitHub 加速域名（Unraid商店CA插件数据源核心）======================
 github.com
 api.github.com
 gist.github.com
@@ -32,75 +32,52 @@ education.github.com
 github.community
 github.githubassets.com
 vscode.dev
+assets-cdn.github.com
+github.map.fastly.net
 
-# Unraid 官方+商店+更新全系域名
+# ====================== Unraid 刚需域名（仅保留系统激活/商店核心，删除所有失效冗余域名）======================
 unraid.net
 www.unraid.net
-communityapps.io
-apps.unraid.net
-plugins.unraid.net
-downloads.unraid.net
-keys.unraid.net
+ca.unraid.net
 forums.unraid.net
 wiki.unraid.net
-blog.unraid.net
-s3.amazonaws.com
-assets.unraid.net
-cdn.unraid.net
-githubusercontent.unraid.net
+keys.unraid.net
 
-#docker仓库相关
+# ====================== Docker 仓库/镜像拉取全套（完全保留，拉取容器必需）======================
 registry-1.docker.io
 auth.docker.io
 production.cloudflare.docker.com
 download.docker.com
 linuxserver.io
 www.linuxserver.io
-
-# Unraid 商店/远程补充
-ca.unraid.net
-myunraid.net
-static.unraid.net
-
-# Docker Hub 镜像拉取全套补充
 hub.docker.com
 index.docker.io
 cdn.docker.io
 cloud.docker.com
 dseasb33srnrn.cloudfront.net
+s3.amazonaws.com
 
-# GitHub API/CDN 加速补充
-api.github.com
-assets-cdn.github.com
-camo.githubusercontent.com
-github.map.fastly.net
-
-# ======================影视刮削源 TMDB+TVDB+配套数据源======================
-# TMDB 核心（刮削元数据、海报、剧照必备）
+# ====================== 影视刮削源 TMDB/TVDB/AniDB/IMDB/Trakt（新增，适配Emby元数据刮削）======================
+# TMDB 电影剧集元数据+海报
 themoviedb.org
 www.themoviedb.org
 api.themoviedb.org
 image.themoviedb.org
-
-# TVDB 核心（电视剧、番剧封面、剧集信息必备）
+# TVDB 剧集封面、番剧信息
 thetvdb.com
 www.thetvdb.com
 api.thetvdb.com
 artworks.thetvdb.com
-
 # AniDB 动漫专用刮削
 anidb.net
 api.anidb.net
-
 # IMDB 备用数据源
 imdb.com
 www.imdb.com
 ia.media-imdb.com
-
-# Trakt 影视进度同步
+# Trakt 影视播放记录同步
 trakt.tv
 api.trakt.tv
-
-# OMDb、IMDbAPI 备用刮削接口
+# 备用刮削API
 omdbapi.com
 imdbapi.dev
