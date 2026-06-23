@@ -13,7 +13,7 @@ env:
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30 # 扩容至30分钟兜底后置清理耗时
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v5
@@ -27,12 +27,24 @@ jobs:
           ulimit -c 0
           # 系统全局DNS超时适配
           echo "options timeout:2 attempts:1" | sudo tee /etc/resolv.conf
+          sync
 
-      - name: 批量并行解析生成Hosts（无孤儿进程优化版）
+      - name: 批量并行解析生成Hosts（带信号自动清理，无孤儿进程）
         run: |
           set -euo pipefail
+
+          # ========== 新增：全局退出捕获，异常/正常退出都会强制清理进程 ==========
+          full_cleanup() {
+            echo "执行全局兜底清理，杀死所有dig与解析子进程..."
+            pkill -9 dig || true
+            pkill -f "bash -c resolve_single" || true
+            rm -f resolve_result.tmp domain.tmp
+            sync
+          }
+          trap full_cleanup EXIT SIGINT SIGTERM
+
           # 初始化hosts头部注释
-          echo "# AutoHosts GitHub+Unraid+Docker+TMDB+TVDB媒体刮削加速文件" > hosts
+          echo "# AutoHosts GitHub+Unraid+Docker+TMDB/TVDB媒体刮削加速文件" > hosts
           echo "# 更新时间(北京时间): $(date +'%Y-%m-%d %H:%M:%S')" >> hosts
           echo "# 定时周期: 每4小时自动更新" >> hosts
           echo "# IPv6条目末尾标记 # IPv6" >> hosts
@@ -76,11 +88,11 @@ jobs:
             if [[ "$dom" =~ github|githubusercontent ]]; then
               [[ -n "$ipv4" ]] && github_domains+=("${ipv4} ${dom}")
               [[ -n "$ipv6" ]] && github_domains+=("${ipv6} ${dom} # IPv6")
-            # Unraid系列域名归类
+            # Unraid刚需域名归类
             elif [[ "$dom" =~ unraid ]]; then
               [[ -n "$ipv4" ]] && unraid_domains+=("${ipv4} ${dom}")
               [[ -n "$ipv6" ]] && unraid_domains+=("${ipv6} ${dom} # IPv6")
-            # Docker、TMDB、TVDB、AniDB、IMDB、Trakt统一归类
+            # Docker、TMDB、TVDB、动漫刮削统一归类
             else
               [[ -n "$ipv4" ]] && media_docker_domains+=("${ipv4} ${dom}")
               [[ -n "$ipv6" ]] && media_docker_domains+=("${ipv6} ${dom} # IPv6")
@@ -93,7 +105,7 @@ jobs:
             printf "%-35s #GitHub\n" "$line" >> hosts
           done
 
-          echo -e "\n## ===== Unraid 商店/插件域名 =====" >> hosts
+          echo -e "\n## ===== Unraid 商店/激活刚需域名 =====" >> hosts
           for line in "${unraid_domains[@]}"; do
             printf "%-35s #Unraid\n" "$line" >> hosts
           done
@@ -112,14 +124,9 @@ jobs:
           echo "本次解析失败域名：$fail_count"
           echo "=================================================="
 
-          # 强制清理所有dig、解析子进程，杜绝孤儿进程拖慢后置清理
-          pkill -9 dig || true
-          pkill -f "bash -c resolve_single" || true
-          # 删除临时文件、同步磁盘释放IO
-          rm -f resolve_result.tmp domain.tmp
-          sync
+          # trap会自动执行full_cleanup，此处无需重复清理
 
-      - name: 提交&推送（修复github.com DNS解析失败）
+      - name: 提交&推送（修复github.com DNS解析污染）
         run: |
           set -euo pipefail
           git config user.name "tee1975"
@@ -132,19 +139,25 @@ jobs:
           fi
           git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
 
-          # 硬绑定GitHub静态IP，规避Runner污染DNS
+          # 硬绑定GitHub静态IP，规避Runner DNS污染
           echo "140.82.116.4 github.com" | sudo tee -a /etc/hosts
           echo "185.199.108.133 raw.githubusercontent.com" | sudo tee -a /etc/hosts
 
           git pull --rebase --autostash origin main
           git push origin main
 
-          # 推送完成二次清理残留进程
+          # 推送完成二次暴力清理所有残留进程，大幅减轻后置清理压力
+          echo "推送完成，二次清理全部后台进程..."
           pkill -9 dig || true
+          pkill -f bash || true
           sync
+          sleep 0.5
 
-      # 新增前置清理git子模块，大幅减少内置Post后置清理耗时
-      - name: 预清理git子模块，加速后置任务
+      # ========== 新增：预清理git子模块，彻底消除内置Post子模块遍历阻塞 ==========
+      - name: 预清理git子模块，加速后置Post清理
         run: |
+          echo "预清理git子模块相关文件，避免后置步骤循环遍历阻塞"
           git submodule deinit --all 2>/dev/null || true
-          rm -rf .git/modules 2>/dev/null || true
+          rm -rf .git/modules .git/submodule-cache 2>/dev/null || true
+          git config --global --remove-section submodule 2>/dev/null || true
+          sync
