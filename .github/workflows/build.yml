@@ -6,7 +6,7 @@ on:
 
 env:
   TZ: Asia/Shanghai
-  DNS_LIST: "223.5.5.5 1.1.1.1"
+  DNS_LIST: "223.5.5.5 114.114.114.114"
   DIG_TIMEOUT: 2
   RETRY_TIMES: 1
 
@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: 拉取仓库代码（关闭内置Post清理，消除最大耗时阻塞源）
+      - name: 拉取仓库代码（禁用自动clean，避免内置Post大扫描）
         uses: actions/checkout@v5
         with:
-          post-checkout: false
+          clean: false # 官方合法参数，关闭自动清理逻辑
 
       - name: 安装依赖 + 系统资源限制优化
         run: |
@@ -157,13 +157,15 @@ jobs:
           sync
           sleep 0.5
 
-      # 手动替代原checkout内置Post清理逻辑，可控无阻塞
+      # 手动轻量化清理git，替代checkout内置Post逻辑
       - name: 手动清理git子模块与多余配置
         run: |
-          echo "手动清理git子模块与多余http header配置"
+          echo "手动轻量化清理git，避免内置后置全量扫描"
           git submodule deinit --all 2>/dev/null || true
           rm -rf .git/modules .git/submodule-cache 2>/dev/null || true
           git config --global --remove-section submodule 2>/dev/null || true
           git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
+          # 手动重置工作目录，替代clean自动扫描
+          git clean -fd --exclude=hosts --exclude=domain.list 2>/dev/null || true
           sync
           sleep 0.2
