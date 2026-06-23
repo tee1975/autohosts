@@ -13,27 +13,30 @@ env:
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
-      - name: 拉取仓库代码
+      - name: 拉取仓库代码（关闭内置Post清理，消除最大耗时阻塞源）
         uses: actions/checkout@v5
+        with:
+          post-checkout: false
 
       - name: 安装依赖 + 系统资源限制优化
         run: |
           sudo apt update -qq
           sudo apt install -y -qq dnsutils coreutils moreutils
-          ulimit -u 200
+          ulimit -u 150
           ulimit -c 0
           echo "options timeout:2 attempts:1" | sudo tee /etc/resolv.conf
           sync
+          sleep 0.2
 
-      - name: 批量并行解析生成Hosts（带信号自动清理，无孤儿进程）
+      - name: 批量并行解析生成Hosts（8线程+信号兜底，控制进程总量）
         run: |
           set -euo pipefail
 
-          # 全局退出捕获，仅清理dig与解析子进程，不会误伤自身bash
+          # 全局退出信号捕获，仅清理解析相关子进程，不误伤自身bash
           full_cleanup() {
-            echo "执行全局兜底清理，杀死所有dig与解析子进程..."
+            echo "执行全局兜底清理，销毁dig与解析子进程、临时文件"
             pkill -9 dig || true
             pkill -f "bash -c resolve_single" || true
             rm -f resolve_result.tmp domain.tmp
@@ -64,10 +67,12 @@ jobs:
           }
           export -f resolve_single
 
-          # 16线程并行批量解析
-          cat domain.list | xargs -P16 -I{} bash -c 'resolve_single "{}"' > resolve_result.tmp
+          # 限制8并发线程，控制同时存活子进程数量
+          cat domain.list | xargs -P8 -I{} bash -c 'resolve_single "{}"' > resolve_result.tmp
+          sync
+          sleep 0.3
 
-          # 分类数组初始化
+          # 初始化分类数组
           github_domains=()
           unraid_domains=()
           media_docker_domains=()
@@ -119,13 +124,19 @@ jobs:
           echo "本次解析失败域名：$fail_count"
           echo "=================================================="
 
+          # 解析完成提前强制回收全部解析子进程
+          pkill -9 dig || true
+          pkill -9 -f "bash -c resolve_single" || true
+          sync
+          sleep 0.5
+
       - name: 提交&推送（修复github.com DNS解析污染）
         run: |
           set -euo pipefail
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
           git add hosts
-          # 无变更直接退出
+          # 无变更直接退出，不生成空提交
           if git diff --staged --quiet; then
             echo "hosts文件无更新，跳过提交推送流程"
             exit 0
@@ -139,17 +150,20 @@ jobs:
           git pull --rebase --autostash origin main
           git push origin main
 
-          # 仅清理dig和并行解析子bash，不杀当前脚本bash，杜绝143报错
-          echo "推送完成，二次清理全部后台进程..."
+          # 推送后二次清理解析残留进程
+          echo "推送完成，清理后台残留进程"
           pkill -9 dig || true
           pkill -9 -f "bash -c resolve_single" || true
           sync
           sleep 0.5
 
-      - name: 预清理git子模块，加速后置Post清理
+      # 手动替代原checkout内置Post清理逻辑，可控无阻塞
+      - name: 手动清理git子模块与多余配置
         run: |
-          echo "预清理git子模块相关文件，避免后置步骤循环遍历阻塞"
+          echo "手动清理git子模块与多余http header配置"
           git submodule deinit --all 2>/dev/null || true
           rm -rf .git/modules .git/submodule-cache 2>/dev/null || true
           git config --global --remove-section submodule 2>/dev/null || true
+          git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
           sync
+          sleep 0.2
