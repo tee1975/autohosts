@@ -74,3 +74,33 @@ api.github.com
 assets-cdn.github.com
 camo.githubusercontent.com
 github.map.fastly.net
+
+# ======================影视刮削源 TMDB+TVDB+配套数据源======================
+# TMDB 核心（刮削元数据、海报、剧照必备）
+themoviedb.org
+www.themoviedb.org
+api.themoviedb.org
+image.themoviedb.org
+
+# TVDB 核心（电视剧、番剧封面、剧集信息必备）
+thetvdb.com
+www.thetvdb.com
+api.thetvdb.com
+artworks.thetvdb.com
+
+# AniDB 动漫专用刮削
+anidb.net
+api.anidb.net
+
+# IMDB 备用数据源
+imdb.com
+www.imdb.com
+ia.media-imdb.com
+
+# Trakt 影视进度同步
+trakt.tv
+api.trakt.tv
+
+# OMDb、IMDbAPI 备用刮削接口
+omdbapi.com
+imdbapi.dev
