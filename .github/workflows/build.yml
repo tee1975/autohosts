@@ -25,6 +25,13 @@ jobs:
       DNS_LIST: "223.5.5.5 114.114.114.114"
       DIG_TIMEOUT: "2"
       RETRY_TIMES: "2"
+      # 是否输出 IPv6 条目。默认关闭：多数国内网络是 IPv4-only 或 IPv6 质量差，
+      # 系统里写了 AAAA 记录后浏览器会先试 IPv6、超时再回退 IPv4，反而更慢。
+      # 确认自己 IPv6 通畅（如 test-ipv6.com 满分）再改成 true
+      ENABLE_IPV6: "false"
+      # 是否在每个条目行尾追加 "#GitHub" 这类分类标签。
+      # 分节注释已经能区分分类，行尾标签会让长域名对齐失效，给 SwitchHosts 用建议 false
+      LINE_TAG: "false"
 
     steps:
       - name: 拉取仓库代码
@@ -64,12 +71,18 @@ jobs:
           [[ "$total" -gt 0 ]] || { echo "::error::domain.list 中没有有效域名"; exit 1; }
 
           # ---------- 2. 单域名解析（带 DNS 轮换 + 重试） ----------
-          # 注意：子函数里 A / AAAA 各自独立重试，避免 v4 成功就放弃 v6
           resolve_single() {
             local dom="$1" dns i v4="" v6=""
             local ok4='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
             # 排除回环、私网、链路本地、APIPA —— 防 DNS 劫持返回假地址
             local bad4='^(0|10|127|169\.254|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.|^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-7])\.'
+            local ok6='^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$'
+            # 排除全零 ::、回环 ::1、Teredo 2001::/32、私网 fc00::/7、
+            # 链路本地 fe80::/10、组播 ff00::/8
+            # 实测阿里 DNS 对部分域名会返回 2001::1 这种 Teredo 垃圾地址，必须挡掉
+            local bad6='^::|^2001:0*:|^[fF][cCdD]|^[fF][eE][89aAbB]|^[fF][fF][0-9a-fA-F]{2}:'
+            local want6="false" done="false"
+            [[ "${ENABLE_IPV6:-false}" == "true" ]] && want6="true"
 
             for dns in $DNS_LIST; do
               for ((i = 1; i <= RETRY_TIMES; i++)); do
@@ -77,14 +90,16 @@ jobs:
                   v4=$(dig +short +timeout="$DIG_TIMEOUT" +tries=1 "@$dns" A "$dom" 2>/dev/null \
                         | grep -E "$ok4" | grep -vE "$bad4" | head -1) || v4=""
                 fi
-                if [[ -z "$v6" ]]; then
+                if [[ "$want6" == "true" && -z "$v6" ]]; then
                   v6=$(dig +short +timeout="$DIG_TIMEOUT" +tries=1 "@$dns" AAAA "$dom" 2>/dev/null \
-                        | grep -E '^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$' \
-                        | grep -vE '^::1$' | head -1) || v6=""
+                        | grep -E "$ok6" | grep -vE "$bad6" | head -1) || v6=""
                 fi
-                [[ -n "$v4" && -n "$v6" ]] && break
+                # 关闭 IPv6 时，拿到 v4 就算完成，少发一半 DNS 请求
+                if [[ -n "$v4" ]] && { [[ "$want6" == "false" ]] || [[ -n "$v6" ]]; }; then
+                  done="true"; break
+                fi
               done
-              [[ -n "$v4" && -n "$v6" ]] && break
+              [[ "$done" == "true" ]] && break
             done
 
             # 关键：用单一 "|" 作分隔符。写成 "||" 会被 bash 当成重复分隔符，
@@ -92,7 +107,7 @@ jobs:
             printf '%s|%s|%s\n' "$dom" "$v4" "$v6"
           }
           export -f resolve_single
-          export DNS_LIST DIG_TIMEOUT RETRY_TIMES
+          export DNS_LIST DIG_TIMEOUT RETRY_TIMES ENABLE_IPV6
 
           # -d '\n' 让每行整行传入，避免域名里的特殊字符被 xargs 二次解释
           # || true：单个解析失败不应带着 123 退出码炸掉整个步骤（外层开了 set -e）
@@ -114,7 +129,9 @@ jobs:
               failed_list+="$dom "
               continue
             fi
-            echo "OK | $dom | IPv4:${ipv4:--} | IPv6:${ipv6:--}"
+            [[ "${ENABLE_IPV6:-false}" == "true" ]] \
+              && echo "OK | $dom | IPv4:${ipv4:--} | IPv6:${ipv6:--}" \
+              || echo "OK | $dom | IPv4:${ipv4:--}"
 
             case "$dom" in
               *github*)          key="github" ;;
@@ -132,7 +149,7 @@ jobs:
             echo "# AutoHosts GitHub+Unraid+Docker+TMDB/TVDB 加速"
             echo "# 更新时间 (北京时间): $(date +'%Y-%m-%d %H:%M:%S')"
             echo "# 定时周期: 每4小时自动更新"
-            echo "# IPv6 条目末尾标记 # IPv6"
+            [[ "${ENABLE_IPV6:-false}" == "true" ]] && echo "# IPv6 条目末尾标记 # IPv6"
           } > hosts
 
           for tag in "github#GitHub" "unraid#Unraid" "media#Docker/MediaScraper"; do
@@ -143,7 +160,12 @@ jobs:
             while IFS= read -r line; do
               [[ -n "$line" ]] || continue
               counts[$key]=$(( ${counts[$key]} + 1 ))
-              printf '%-45s %s\n' "$line" "#$label" >> hosts
+              # 行尾分类标签默认关闭：长域名会让对齐失效，且分节注释已能区分分类
+              if [[ "${LINE_TAG:-false}" == "true" ]]; then
+                printf '%-45s %s\n' "$line" "#$label" >> hosts
+              else
+                printf '%s\n' "$line" >> hosts
+              fi
             done < <(printf '%s' "${groups[$key]}" | sed '/^$/d' | sort)
           done
 
