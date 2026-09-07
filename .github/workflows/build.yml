@@ -2,141 +2,206 @@ name: Auto Build Hosts
 
 on:
   schedule:
-    - cron: "0 */4 * * *"
+    # GitHub cron 一律按 UTC 执行，这里用 :17 分避开整点排队高峰
+    - cron: "17 */4 * * *"
   workflow_dispatch:
 
-env:
-  TZ: Asia/Shanghai
-  DNS_LIST: "223.5.5.5 114.114.114.114"
-  DIG_TIMEOUT: 2
-  RETRY_TIMES: 2                     # 现在真正启用重试
+# 必须显式授权：新仓库默认 GITHUB_TOKEN 为只读，不写这行 push 会 403
+permissions:
+  contents: write
+
+# 防止上一次没跑完就叠加下一次，导致 push 冲突
+concurrency:
+  group: auto-hosts-${{ github.repository }}
+  cancel-in-progress: false
 
 jobs:
   make-hosts:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
+
+    env:
+      TZ: Asia/Shanghai
+      DNS_LIST: "223.5.5.5 114.114.114.114"
+      DIG_TIMEOUT: "2"
+      RETRY_TIMES: "2"
 
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v5
         with:
-          clean: false               # 避免内置 post-checkout 全量扫描
+          persist-credentials: true
+          fetch-depth: 1
 
       - name: 安装依赖
         run: |
-          sudo apt update -qq
-          sudo apt install -y -qq dnsutils moreutils
-          # 不再修改系统 DNS 或进程限制，避免干扰 Runner
+          sudo apt-get update -qq
+          # 只装 dnsutils；moreutils 全程未使用，装它纯属浪费时间
+          sudo apt-get install -y -qq --no-install-recommends dnsutils
 
       - name: 并行解析并生成 hosts
         run: |
           set -euo pipefail
 
-          # 清理临时文件（无需杀进程）
-          cleanup() { rm -f resolve_result.tmp domain.clean; }
-          trap cleanup EXIT
+          # 前置校验：环境变量缺失时立刻报错，否则子进程会静默变成"全部解析失败"
+          [[ -f domain.list ]] || { echo "::error::仓库根目录缺少 domain.list"; exit 1; }
+          [[ -n "${DNS_LIST:-}" ]] || { echo "::error::DNS_LIST 为空"; exit 1; }
+          SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
-          # 写入头部
-          cat > hosts <<EOF
-          # AutoHosts GitHub+Unraid+Docker+TMDB/TVDB 加速
-          # 更新时间 (北京时间): $(date +'%Y-%m-%d %H:%M:%S')
-          # 定时周期: 每4小时自动更新
-          # IPv6 条目末尾标记 # IPv6
-          EOF
+          trap 'rm -f domain.clean resolve_result.tmp' EXIT
 
-          # 清洗域名列表（去重、过滤空行/注释），但不覆盖原文件
-          grep -v '^\s*$' domain.list | grep -v '^\s*#' | sort -u > domain.clean
+          # ---------- 1. 清洗域名列表 ----------
+          # 依次处理：去掉 Windows 换行 \r、去掉行注释、压掉首尾空格、转小写、
+          # 只保留合法域名字符、去重 —— 避免非法字符写进 hosts
+          sed -e 's/\r$//' -e 's/#.*$//' domain.list \
+            | tr '[:upper:]' '[:lower:]' \
+            | awk '{ $1=$1; print }' \
+            | grep -E '^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$' \
+            | sort -u > domain.clean
 
-          # 单域名解析函数（带重试）
+          total=$(wc -l < domain.clean)
+          echo "待解析域名数：$total"
+          [[ "$total" -gt 0 ]] || { echo "::error::domain.list 中没有有效域名"; exit 1; }
+
+          # ---------- 2. 单域名解析（带 DNS 轮换 + 重试） ----------
+          # 注意：子函数里 A / AAAA 各自独立重试，避免 v4 成功就放弃 v6
           resolve_single() {
-            local dom="$1"
-            local ipv4="" ipv6=""
+            local dom="$1" dns i v4="" v6=""
+            local ok4='^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+            # 排除回环、私网、链路本地、APIPA —— 防 DNS 劫持返回假地址
+            local bad4='^(0|10|127|169\.254|192\.168|172\.(1[6-9]|2[0-9]|3[01]))\.|^100\.(6[4-9]|[7-9][0-9]|1[0-2][0-7])\.'
+
             for dns in $DNS_LIST; do
-              for ((i=1; i<=RETRY_TIMES; i++)); do
-                ipv4=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" A "$dom" 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
-                ipv6=$(dig +short +timeout=$DIG_TIMEOUT @"$dns" AAAA "$dom" 2>/dev/null | grep -E '^[0-9a-fA-F:]+$' | head -1)
-                [[ -n "$ipv4" || -n "$ipv6" ]] && break 2
+              for ((i = 1; i <= RETRY_TIMES; i++)); do
+                if [[ -z "$v4" ]]; then
+                  v4=$(dig +short +timeout="$DIG_TIMEOUT" +tries=1 "@$dns" A "$dom" 2>/dev/null \
+                        | grep -E "$ok4" | grep -vE "$bad4" | head -1) || v4=""
+                fi
+                if [[ -z "$v6" ]]; then
+                  v6=$(dig +short +timeout="$DIG_TIMEOUT" +tries=1 "@$dns" AAAA "$dom" 2>/dev/null \
+                        | grep -E '^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}$' \
+                        | grep -vE '^::1$' | head -1) || v6=""
+                fi
+                [[ -n "$v4" && -n "$v6" ]] && break
               done
+              [[ -n "$v4" && -n "$v6" ]] && break
             done
-            echo "$dom||$ipv4||$ipv6"
+
+            # 关键：用单一 "|" 作分隔符。写成 "||" 会被 bash 当成重复分隔符，
+            # 导致字段错位（IFS 是字符集合，不是字符串）
+            printf '%s|%s|%s\n' "$dom" "$v4" "$v6"
           }
           export -f resolve_single
           export DNS_LIST DIG_TIMEOUT RETRY_TIMES
 
-          # 8 线程并行解析
-          < domain.clean xargs -P8 -I{} bash -c 'resolve_single "{}"' > resolve_result.tmp
+          # -d '\n' 让每行整行传入，避免域名里的特殊字符被 xargs 二次解释
+          # || true：单个解析失败不应带着 123 退出码炸掉整个步骤（外层开了 set -e）
+          xargs -a domain.clean -d '\n' -r -P "$(nproc)" -I{} \
+            bash -c 'resolve_single "$1"' _ {} > resolve_result.tmp || true
 
-          # 分类存储（使用关联数组）
+          # ---------- 3. 分类聚合 ----------
           declare -A groups=([github]="" [unraid]="" [media]="")
+          declare -A counts=([github]=0 [unraid]=0 [media]=0)
           fail_count=0
+          failed_list=""
 
-          while IFS='||' read -r dom ipv4 ipv6; do
+          while IFS='|' read -r dom ipv4 ipv6; do
+            [[ -z "$dom" ]] && continue
+
             if [[ -z "$ipv4" && -z "$ipv6" ]]; then
-              echo "⚠️ 解析失败：$dom"
+              echo "::warning::解析失败：$dom"
               fail_count=$((fail_count + 1))
+              failed_list+="$dom "
               continue
             fi
-            echo "✅ 解析成功 | $dom | IPv4:$ipv4 | IPv6:$ipv6"
-
-            # 组装行（IPv4 和 IPv6 分别存储）
-            [[ -n "$ipv4" ]] && line4="$ipv4 $dom"
-            [[ -n "$ipv6" ]] && line6="$ipv6 $dom # IPv6"
+            echo "OK | $dom | IPv4:${ipv4:--} | IPv6:${ipv6:--}"
 
             case "$dom" in
-              *github*|*githubusercontent*)
-                [[ -n "$ipv4" ]] && groups[github]+="${line4}"$'\n'
-                [[ -n "$ipv6" ]] && groups[github]+="${line6}"$'\n'
-                ;;
-              *unraid*)
-                [[ -n "$ipv4" ]] && groups[unraid]+="${line4}"$'\n'
-                [[ -n "$ipv6" ]] && groups[unraid]+="${line6}"$'\n'
-                ;;
-              *)
-                [[ -n "$ipv4" ]] && groups[media]+="${line4}"$'\n'
-                [[ -n "$ipv6" ]] && groups[media]+="${line6}"$'\n'
-                ;;
+              *github*)          key="github" ;;
+              *unraid*)          key="unraid" ;;
+              * )                key="media"  ;;
             esac
+
+            # 分行写，不用易串味的共享变量
+            [[ -n "$ipv4" ]] && groups[$key]+="$ipv4 $dom"$'\n'
+            [[ -n "$ipv6" ]] && groups[$key]+="$ipv6 $dom # IPv6"$'\n'
           done < resolve_result.tmp
 
-          # 分区块写入 hosts
+          # ---------- 4. 写 hosts（顺序固定，避免无意义 commit 抖动） ----------
+          {
+            echo "# AutoHosts GitHub+Unraid+Docker+TMDB/TVDB 加速"
+            echo "# 更新时间 (北京时间): $(date +'%Y-%m-%d %H:%M:%S')"
+            echo "# 定时周期: 每4小时自动更新"
+            echo "# IPv6 条目末尾标记 # IPv6"
+          } > hosts
+
           for tag in "github#GitHub" "unraid#Unraid" "media#Docker/MediaScraper"; do
-            key="${tag%#*}" ; label="${tag#*#}"
-            echo -e "\n## ===== $label 加速域名 =====" >> hosts
+            key="${tag%#*}"; label="${tag#*#}"
+            printf '\n## ===== %s 加速域名 =====\n' "$label" >> hosts
+
+            # 排序后再落盘：-P 并行的返回顺序随机，不排序每次 diff 都有变化
             while IFS= read -r line; do
-              [[ -n "$line" ]] && printf "%-40s %s\n" "$line" "#$label" >> hosts
-            done <<< "${groups[$key]}"
+              [[ -n "$line" ]] || continue
+              counts[$key]=$(( ${counts[$key]} + 1 ))
+              printf '%-45s %s\n' "$line" "#$label" >> hosts
+            done < <(printf '%s' "${groups[$key]}" | sed '/^$/d' | sort)
           done
 
-          echo -e "\n# 文件结束" >> hosts
+          echo "" >> hosts
+          echo "# 文件结束" >> hosts
 
-          # 输出统计
-          echo -e "\n==================== 运行统计 ===================="
-          echo "GitHub 条目：$(echo "${groups[github]}" | wc -l)"
-          echo "Unraid 条目：$(echo "${groups[unraid]}" | wc -l)"
-          echo "Docker/媒体 条目：$(echo "${groups[media]}" | wc -l)"
-          echo "解析失败域名：$fail_count"
+          # ---------- 5. 统计输出 ----------
+          {
+            echo "## Hosts 构建统计"
+            echo ""
+            echo "| 分类 | 条目数 |"
+            echo "|---|---|"
+            echo "| GitHub | ${counts[github]} |"
+            echo "| Unraid | ${counts[unraid]} |"
+            echo "| Docker/媒体 | ${counts[media]} |"
+            echo ""
+            echo "- 解析失败：**$fail_count** / $total"
+            [[ -n "$failed_list" ]] && echo "- 失败清单：\`$failed_list\`"
+          } >> "$SUMMARY"
+
+          echo "==================== 运行统计 ===================="
+          echo "GitHub 条目：${counts[github]}"
+          echo "Unraid 条目：${counts[unraid]}"
+          echo "Docker/媒体 条目：${counts[media]}"
+          echo "解析失败域名：$fail_count / $total"
           echo "=================================================="
 
-      - name: 提交并推送（使用 GITHUB_TOKEN 规避 DNS 污染）
+          # 全军覆没时标记为失败，不要提交一个空 hosts 上去
+          if [[ "$fail_count" -eq "$total" ]]; then
+            echo "::error::全部域名解析失败，疑似网络或 DNS 异常，终止提交"
+            exit 1
+          fi
+
+      - name: 提交并推送
+        env:
+          BRANCH: ${{ github.ref_name }}
         run: |
+          set -euo pipefail
           git config user.name "tee1975"
           git config user.email "tee1975@users.noreply.github.com"
+
           git add hosts
-          if git diff --staged --quiet; then
+          if git diff --cached --quiet; then
             echo "hosts 无变化，跳过提交"
             exit 0
           fi
-          git commit -m "auto update hosts $(date +'%Y-%m-%d %H:%M')"
+          git commit -m "chore: auto update hosts $(date +'%Y-%m-%d %H:%M')"
 
-          # 关键改进：使用 GitHub Token 认证，不再依赖 DNS 解析 GitHub IP
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          git pull --rebase --autostash origin main
-          git push origin main
-
-      - name: 手动轻量清理（替代内置 post-checkout 扫描）
-        run: |
-          git submodule deinit --all 2>/dev/null || true
-          rm -rf .git/modules .git/submodule-cache 2>/dev/null || true
-          git config --global --remove-section submodule 2>/dev/null || true
-          git config --local --unset-all http.https://github.com/.extraheader 2>/dev/null || true
-          git clean -fd --exclude=hosts --exclude=domain.list 2>/dev/null || true
+          # 分支名取自上下文，写死 main 在 master 仓库会直接挂
+          # 失败重试 3 次，应对并发 push 冲突
+          for i in 1 2 3; do
+            git pull --rebase --no-edit origin "$BRANCH" || true
+            if git push origin "HEAD:$BRANCH"; then
+              echo "推送成功"
+              exit 0
+            fi
+            echo "::warning::第 $i 次推送失败，5 秒后重试"
+            sleep $((i * 5))
+          done
+          echo "::error::推送连续失败"
+          exit 1
