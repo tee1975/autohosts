@@ -1,78 +1,78 @@
 # AutoHosts GitHub+Unraid+Docker+TMDB/TVDB 加速
-# 更新时间 (北京时间): 2026-09-12 06:33:11
+# 更新时间 (北京时间): 2026-09-12 12:30:43
 # 定时周期: 每4小时自动更新
 
 ## ===== GitHub 加速域名 =====
 13.107.42.16 pipelines.actions.githubusercontent.com
-140.82.112.4 gist.github.com
-140.82.112.4 github.com
-140.82.112.5 api.github.com
-140.82.113.22 central.github.com
-140.82.113.22 collector.github.com
-140.82.114.17 github.community
-140.82.114.21 education.github.com
-140.82.114.25 live.github.com
-140.82.114.26 alive.github.com
-140.82.114.9 codeload.github.com
-146.75.121.194 github.global.ssl.fastly.net
+140.82.112.18 github.community
+140.82.113.26 alive.github.com
+140.82.113.26 live.github.com
+140.82.114.22 central.github.com
+140.82.114.22 collector.github.com
+140.82.114.22 education.github.com
+140.82.121.3 gist.github.com
+140.82.121.3 github.com
+140.82.121.5 api.github.com
+140.82.121.9 codeload.github.com
+146.75.117.194 github.global.ssl.fastly.net
 185.199.108.133 avatars.githubusercontent.com
-185.199.108.133 github.map.fastly.net
+185.199.108.133 avatars0.githubusercontent.com
+185.199.108.133 avatars1.githubusercontent.com
 185.199.108.133 objects.githubusercontent.com
-185.199.108.133 private-user-images.githubusercontent.com
-185.199.108.133 user-images.githubusercontent.com
-185.199.109.133 avatars1.githubusercontent.com
-185.199.109.133 avatars2.githubusercontent.com
-185.199.109.133 avatars3.githubusercontent.com
-185.199.109.133 avatars4.githubusercontent.com
+185.199.109.133 avatars5.githubusercontent.com
 185.199.109.133 cloud.githubusercontent.com
-185.199.109.133 favicons.githubusercontent.com
+185.199.109.133 media.githubusercontent.com
+185.199.109.133 raw.githubusercontent.com
+185.199.109.153 githubstatus.com
+185.199.110.133 avatars2.githubusercontent.com
 185.199.110.133 camo.githubusercontent.com
 185.199.110.133 desktop.githubusercontent.com
-185.199.110.133 media.githubusercontent.com
-185.199.110.153 githubstatus.com
+185.199.110.133 private-user-images.githubusercontent.com
 185.199.110.215 github.githubassets.com
-185.199.111.133 avatars0.githubusercontent.com
-185.199.111.133 avatars5.githubusercontent.com
-185.199.111.133 raw.githubusercontent.com
+185.199.111.133 avatars3.githubusercontent.com
+185.199.111.133 avatars4.githubusercontent.com
+185.199.111.133 favicons.githubusercontent.com
+185.199.111.133 github.map.fastly.net
+185.199.111.133 user-images.githubusercontent.com
 185.199.111.153 github.io
 192.0.66.2 github.blog
 
 ## ===== Unraid 加速域名 =====
-104.26.2.117 wiki.unraid.net
 104.26.3.117 ca.unraid.net
 104.26.3.117 forums.unraid.net
-104.26.3.117 unraid.net
+104.26.3.117 wiki.unraid.net
 104.26.3.117 www.unraid.net
+172.67.69.176 unraid.net
 
 ## ===== Docker/MediaScraper 加速域名 =====
-100.50.66.215 cloud.docker.com
-104.16.97.215 production.cloudflare.docker.com
-104.18.43.178 auth.docker.io
-104.20.13.80 trakt.tv
+100.28.153.195 cloud.docker.com
+104.16.100.215 production.cloudflare.docker.com
+104.18.43.187 hub.docker.com
 104.20.14.80 api.trakt.tv
-104.20.34.121 omdbapi.com
-104.21.37.19 anidb.net
+104.20.14.80 trakt.tv
 104.223.55.56 racknerd.616462.xyz
-13.226.251.88 api.themoviedb.org
-150.171.109.100 vscode.dev
-172.64.144.69 hub.docker.com
+146.75.117.16 ia.media-imdb.com
+150.171.109.101 vscode.dev
+16.15.214.73 s3.amazonaws.com
+172.64.144.78 auth.docker.io
+172.66.150.8 omdbapi.com
+172.67.202.158 anidb.net
 178.62.84.203 linuxserver.io
 178.62.84.203 www.linuxserver.io
-18.238.137.25 www.imdb.com
+18.205.85.14 index.docker.io
+18.238.249.95 thetvdb.com
+18.238.249.95 www.thetvdb.com
+18.239.105.64 themoviedb.org
+18.239.105.92 www.themoviedb.org
+18.239.47.212 dseasb33srnrn.cloudfront.net
+18.239.64.215 www.imdb.com
+18.65.36.76 api.thetvdb.com
 182.255.90.3 cloudcone.616462.xyz
-3.169.201.199 dseasb33srnrn.cloudfront.net
-3.169.202.45 themoviedb.org
-3.169.202.45 www.themoviedb.org
-3.228.236.40 index.docker.io
+3.173.160.60 artworks.thetvdb.com
+3.173.161.41 download.docker.com
+3.173.161.8 api.themoviedb.org
+3.213.123.75 registry-1.docker.io
 44.215.137.99 imdb.com
-52.217.197.224 s3.amazonaws.com
 94.130.237.200 api.anidb.net
-98.85.233.189 registry-1.docker.io
-99.84.102.76 artworks.thetvdb.com
-99.84.105.49 download.docker.com
-99.84.123.80 api.thetvdb.com
-99.84.123.80 thetvdb.com
-99.84.123.80 www.thetvdb.com
-99.84.98.145 ia.media-imdb.com
 
 # 文件结束
